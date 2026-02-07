@@ -1,0 +1,163 @@
+name: CI - Pull Request Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'force-app/**'
+
+jobs:
+  # ================================================================
+  # JOB 1: Static Code Analysis (PMD)
+  # Runs BEFORE tests to catch code quality issues early (fail-fast)
+  # Detects: SOQL in loops, high complexity, unused variables, etc.
+  # ================================================================
+  static-analysis:
+    name: 🔍 Static Code Analysis (PMD)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run PMD Static Analysis
+        id: pmd
+        uses: pmd/pmd-github-action@v2
+        with:
+          sourcePath: 'force-app'
+          rulesets: 'ruleset.xml'
+          analyzeModifiedFilesOnly: true
+          createGitHubAnnotations: true
+
+      - name: Upload PMD SARIF report
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: pmd-report.sarif
+
+      - name: Fail if violations found
+        if: steps.pmd.outputs.violations != 0
+        run: |
+          echo "❌ PMD found ${{ steps.pmd.outputs.violations }} violation(s)."
+          echo "Please fix the code quality issues before merging."
+          exit 1
+
+  # ================================================================
+  # JOB 2: Build, Push & Test on Scratch Org
+  # Only runs if static analysis passes (dependency: needs)
+  # ================================================================
+  build-and-test:
+    name: 🧪 Build & Test (Scratch Org)
+    needs: static-analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --- CLI Caching: Saves ~1-2 min per run ---
+      - name: Cache Salesforce CLI
+        id: cache-sf-cli
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/sf
+            ~/.cache/sf
+            /usr/local/lib/node_modules/@salesforce
+          key: sf-cli-${{ runner.os }}-v2
+          restore-keys: |
+            sf-cli-${{ runner.os }}-
+
+      - name: Install Salesforce CLI
+        if: steps.cache-sf-cli.outputs.cache-hit != 'true'
+        run: |
+          npm install --global @salesforce/cli
+          sf --version
+
+      - name: Verify Salesforce CLI
+        if: steps.cache-sf-cli.outputs.cache-hit == 'true'
+        run: sf --version
+
+      - name: Authenticate Dev Hub
+        run: |
+          echo "${{ secrets.SFDX_AUTH_URL }}" > sfdx_auth.url
+          sf org login sfdx-url --sfdx-url-file sfdx_auth.url --set-default-dev-hub --alias IntegrationOrg
+          rm -f sfdx_auth.url
+
+      - name: Create Scratch Org
+        run: sf org create scratch --definition-file config/project-scratch-def.json --alias scratch-org --set-default --duration-days 1
+
+      - name: Push Source to Scratch Org
+        run: sf project deploy start --target-org scratch-org
+
+      - name: Run Apex Tests
+        id: run-tests
+        run: |
+          sf apex run test --target-org scratch-org --wait 10 --result-format human --code-coverage | tee test-output.txt
+          echo "test_result=success" >> $GITHUB_OUTPUT
+
+      - name: Delete Scratch Org
+        if: always()
+        run: sf org delete scratch --target-org scratch-org --no-prompt
+
+  # ================================================================
+  # JOB 3: Post PR Comment with CI Results
+  # Runs after all jobs to summarize results on the Pull Request
+  # ================================================================
+  pr-comment:
+    name: 💬 PR Results Comment
+    needs: [static-analysis, build-and-test]
+    runs-on: ubuntu-latest
+    if: always()
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Determine overall status
+        id: status
+        run: |
+          ANALYSIS="${{ needs.static-analysis.result }}"
+          TESTS="${{ needs.build-and-test.result }}"
+
+          if [ "$ANALYSIS" = "success" ]; then
+            echo "analysis_icon=✅" >> $GITHUB_OUTPUT
+            echo "analysis_text=Passed — No violations found" >> $GITHUB_OUTPUT
+          elif [ "$ANALYSIS" = "skipped" ]; then
+            echo "analysis_icon=⏭️" >> $GITHUB_OUTPUT
+            echo "analysis_text=Skipped" >> $GITHUB_OUTPUT
+          else
+            echo "analysis_icon=❌" >> $GITHUB_OUTPUT
+            echo "analysis_text=Failed — Code quality issues detected" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "$TESTS" = "success" ]; then
+            echo "tests_icon=✅" >> $GITHUB_OUTPUT
+            echo "tests_text=All tests passed" >> $GITHUB_OUTPUT
+          elif [ "$TESTS" = "skipped" ]; then
+            echo "tests_icon=⏭️" >> $GITHUB_OUTPUT
+            echo "tests_text=Skipped (static analysis failed)" >> $GITHUB_OUTPUT
+          else
+            echo "tests_icon=❌" >> $GITHUB_OUTPUT
+            echo "tests_text=Failed — See Actions log for details" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "$ANALYSIS" = "success" ] && [ "$TESTS" = "success" ]; then
+            echo "overall=✅ All checks passed" >> $GITHUB_OUTPUT
+          else
+            echo "overall=❌ Some checks failed" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post PR Comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: ci-results
+          message: |
+            ## 🔄 CI Pipeline Results
+
+            | Check | Status | Details |
+            |-------|--------|---------|
+            | 🔍 **Static Analysis (PMD)** | ${{ steps.status.outputs.analysis_icon }} | ${{ steps.status.outputs.analysis_text }} |
+            | 🧪 **Apex Tests (Scratch Org)** | ${{ steps.status.outputs.tests_icon }} | ${{ steps.status.outputs.tests_text }} |
+
+            ### ${{ steps.status.outputs.overall }}
+
+            ---
+            <sub>🤖 Automated by CI Pipeline — <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View full run</a></sub>
