@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="Salesforce Apex Best Practices"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+
+    <description>
+        Custom PMD ruleset for Salesforce Apex code quality.
+        Detects common anti-patterns: SOQL in loops, high complexity, unused variables, etc.
+    </description>
+
+    <!-- ============================================================ -->
+    <!--                    BEST PRACTICES                            -->
+    <!-- ============================================================ -->
+    <rule ref="category/apex/bestpractices.xml/ApexUnitTestClassShouldHaveAsserts">
+        <priority>2</priority>
+    </rule>
+    <rule ref="category/apex/bestpractices.xml/ApexUnitTestShouldNotUseSeeAllDataTrue">
+        <priority>2</priority>
+    </rule>
+    <rule ref="category/apex/bestpractices.xml/AvoidGlobalModifier">
+        <priority>3</priority>
+    </rule>
+    <rule ref="category/apex/bestpractices.xml/AvoidLogicInTrigger">
+        <priority>2</priority>
+    </rule>
+    <rule ref="category/apex/bestpractices.xml/UnusedLocalVariable">
+        <priority>2</priority>
+    </rule>
+
+    <!-- ============================================================ -->
+    <!--                    PERFORMANCE                               -->
+    <!-- ============================================================ -->
+    <!-- CRITICAL: Detects SOQL/SOSL queries inside loops -->
+    <rule ref="category/apex/performance.xml/AvoidSoqlInLoops">
+        <priority>1</priority>
+    </rule>
+    <rule ref="category/apex/performance.xml/AvoidSoslInLoops">
+        <priority>1</priority>
+    </rule>
+    <!-- CRITICAL: Detects DML statements inside loops -->
+    <rule ref="category/apex/performance.xml/AvoidDmlStatementsInLoops">
+        <priority>1</priority>
+    </rule>
+    <rule ref="category/apex/performance.xml/OperationWithLimitsInLoop">
+        <priority>1</priority>
+    </rule>
+
+    <!-- ============================================================ -->
+    <!--                    DESIGN (Complexity)                       -->
+    <!-- ============================================================ -->
+    <!-- Blocks overly complex methods (cyclomatic complexity > 25) -->
+    <rule ref="category/apex/design.xml/CyclomaticComplexity">
+        <priority>2</priority>
+        <properties>
+            <property name="classReportLevel" value="50" />
+            <property name="methodReportLevel" value="25" />
+        </properties>
+    </rule>
+    <!-- Blocks overly complex cognitive methods -->
+    <rule ref="category/apex/design.xml/CognitiveComplexity">
+        <priority>2</priority>
+        <properties>
+            <property name="classReportLevel" value="50" />
+            <property name="methodReportLevel" value="15" />
+        </properties>
+    </rule>
+    <!-- Blocks methods that are too long -->
+    <rule ref="category/apex/design.xml/ExcessiveClassLength">
+        <priority>3</priority>
+        <properties>
+            <property name="minimum" value="500" />
+        </properties>
+    </rule>
+    <rule ref="category/apex/design.xml/ExcessiveParameterList">
+        <priority>3</priority>
+        <properties>
+            <property name="minimum" value="5" />
+        </properties>
+    </rule>
+    <rule ref="category/apex/design.xml/NcssMethodCount">
+        <priority>3</priority>
+        <properties>
+            <property name="minimum" value="60" />
+        </properties>
+    </rule>
+    <rule ref="category/apex/design.xml/TooManyFields">
+        <priority>3</priority>
+        <properties>
+            <property name="maxfields" value="20" />
+        </properties>
+    </rule>
+
+    <!-- ============================================================ -->
+    <!--                    ERROR PRONE                               -->
+    <!-- ============================================================ -->
+    <rule ref="category/apex/errorprone.xml/AvoidDirectAccessTriggerMap">
+        <priority>2</priority>
+    </rule>
+    <rule ref="category/apex/errorprone.xml/AvoidHardcodingId">
+        <priority>1</priority>
+    </rule>
+    <rule ref="category/apex/errorprone.xml/EmptyCatchBlock">
+        <priority>1</priority>
+    </rule>
+    <rule ref="category/apex/errorprone.xml/EmptyIfStmt">
+        <priority>2</priority>
+    </rule>
+    <rule ref="category/apex/errorprone.xml/EmptyStatementBlock">
+        <priority>2</priority>
+    </rule>
+    <rule ref="category/apex/errorprone.xml/EmptyTryOrFinallyBlock">
+        <priority>2</priority>
+    </rule>
+    <rule ref="category/apex/errorprone.xml/EmptyWhileStmt">
+        <priority>2</priority>
+    </rule>
+    <rule ref="category/apex/errorprone.xml/MethodWithSameNameAsEnclosingClass">
+        <priority>2</priority>
+    </rule>
+
+    <!-- ============================================================ -->
+    <!--                    SECURITY                                  -->
+    <!-- ============================================================ -->
+    <rule ref="category/apex/security.xml/ApexCRUDViolation">
+        <priority>2</priority>
+    </rule>
+    <rule ref="category/apex/security.xml/ApexInsecureEndpoint">
+        <priority>1</priority>
+    </rule>
+    <rule ref="category/apex/security.xml/ApexOpenRedirect">
+        <priority>1</priority>
+    </rule>
+    <rule ref="category/apex/security.xml/ApexSOQLInjection">
+        <priority>1</priority>
+    </rule>
+    <rule ref="category/apex/security.xml/ApexSuggestUsingNamedCred">
+        <priority>2</priority>
+    </rule>
+    <rule ref="category/apex/security.xml/ApexXSSFromEscapeFalse">
+        <priority>1</priority>
+    </rule>
+    <rule ref="category/apex/security.xml/ApexXSSFromURLParam">
+        <priority>1</priority>
+    </rule>
+
+</ruleset>
