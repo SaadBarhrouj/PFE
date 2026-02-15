@@ -1,0 +1,220 @@
+name: CD - Deploy to UAT
+
+on:
+  push:
+    branches:
+      - uat
+    paths:
+      - 'force-app/**'
+
+concurrency:
+  group: deploy-uat
+  cancel-in-progress: false
+
+jobs:
+  deploy-to-uat:
+    name: 🚀 Deploy to UAT Org
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache Salesforce CLI
+        id: cache-sf-cli
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/sf
+            ~/.cache/sf
+            /usr/local/lib/node_modules/@salesforce
+          key: sf-cli-${{ runner.os }}-v2
+          restore-keys: |
+            sf-cli-${{ runner.os }}-
+
+      - name: Install Salesforce CLI
+        if: steps.cache-sf-cli.outputs.cache-hit != 'true'
+        run: |
+          npm install --global @salesforce/cli
+          sf --version
+
+      - name: Verify Salesforce CLI
+        if: steps.cache-sf-cli.outputs.cache-hit == 'true'
+        run: sf --version
+
+      - name: Authenticate UAT Org
+        run: |
+          echo "${{ secrets.UAT_AUTH_URL }}" > auth.url
+          sf org login sfdx-url \
+            --sfdx-url-file auth.url \
+            --alias UATOrg \
+            --set-default
+          rm -f auth.url
+
+      - name: Deploy to UAT Org
+        run: |
+          echo "🚀 Deploying to UAT Org..."
+          sf project deploy start \
+            --source-dir force-app \
+            --target-org UATOrg \
+            --test-level RunLocalTests \
+            --wait 30
+
+      - name: Deployment Summary
+        if: success()
+        run: |
+          echo "============================================"
+          echo "✅ DEPLOYMENT TO UAT SUCCESSFUL"
+          echo "============================================"
+          echo "Branch:      uat"
+          echo "Commit:      ${{ github.sha }}"
+          echo "Author:      ${{ github.actor }}"
+          echo "Timestamp:   $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          echo "============================================"
+
+      - name: Deployment Failed
+        if: failure()
+        run: |
+          echo "============================================"
+          echo "❌ DEPLOYMENT TO UAT FAILED"
+          echo "============================================"
+          echo "Check the logs above for details."
+          echo "============================================"
+
+      # ── 🔔  Slack — UAT Success → @qa-team ──
+      - name: 🔔 Slack — UAT Deployed Successfully
+        if: success()
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          channel-id: ${{ secrets.SLACK_CHANNEL_DEPLOYMENTS }}
+          payload: |
+            {
+              "text": "✅ UAT déployé avec succès",
+              "attachments": [
+                {
+                  "color": "#28a745",
+                  "blocks": [
+                    {
+                      "type": "header",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "✅ Déploiement UAT réussi",
+                        "emoji": true
+                      }
+                    },
+                    {
+                      "type": "section",
+                      "fields": [
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Environnement:*\nUAT"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Auteur:*\n`${{ github.actor }}`"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Commit:*\n`${{ github.sha }}`"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Date:*\n<!date^${{ github.event.head_commit.timestamp }}^{date_short} {time}|now>"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "section",
+                      "text": {
+                        "type": "mrkdwn",
+                        "text": "<!subteam^${{ secrets.SLACK_QA_TEAM_GROUP_ID }}> 🧪 L'environnement UAT est prêt pour les tests.\n\n*Message:* ${{ github.event.head_commit.message }}"
+                      }
+                    },
+                    {
+                      "type": "actions",
+                      "elements": [
+                        {
+                          "type": "button",
+                          "text": {
+                            "type": "plain_text",
+                            "text": "📋 Voir le run"
+                          },
+                          "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+      # ── 🔔 Slack — UAT Failure → @tech-lead ──
+      - name: 🔔 Slack — UAT Deployment Failed
+        if: failure()
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          channel-id: ${{ secrets.SLACK_CHANNEL_DEPLOYMENTS }}
+          payload: |
+            {
+              "text": "❌ Échec du déploiement UAT",
+              "attachments": [
+                {
+                  "color": "#dc3545",
+                  "blocks": [
+                    {
+                      "type": "header",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "❌ Déploiement UAT échoué",
+                        "emoji": true
+                      }
+                    },
+                    {
+                      "type": "section",
+                      "fields": [
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Environnement:*\nUAT"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Auteur:*\n`${{ github.actor }}`"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Commit:*\n`${{ github.sha }}`"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Branche:*\n`uat`"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "section",
+                      "text": {
+                        "type": "mrkdwn",
+                        "text": "<!subteam^${{ secrets.SLACK_TECH_LEAD_GROUP_ID }}> ⚠️ Le déploiement UAT a échoué. Intervention requise."
+                      }
+                    },
+                    {
+                      "type": "actions",
+                      "elements": [
+                        {
+                          "type": "button",
+                          "text": {
+                            "type": "plain_text",
+                            "text": "🔴 Voir les logs"
+                          },
+                          "style": "danger",
+                          "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}

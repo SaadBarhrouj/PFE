@@ -3,6 +3,7 @@ name: CI - Pull Request Validation
 on:
   pull_request:
     branches:
+      - uat
       - main
     paths:
       - 'force-app/**'
@@ -10,8 +11,6 @@ on:
 jobs:
   # ================================================================
   # JOB 1: Static Code Analysis (PMD)
-  # Runs BEFORE tests to catch code quality issues early (fail-fast)
-  # Detects: SOQL in loops, high complexity, unused variables, etc.
   # ================================================================
   static-analysis:
     name: 🔍 Static Code Analysis (PMD)
@@ -43,18 +42,17 @@ jobs:
           exit 1
 
   # ================================================================
-  # JOB 2: Build, Push & Test on Scratch Org
-  # Only runs if static analysis passes (dependency: needs)
+  # JOB 2: Scratch Org Tests (PRs → uat only)
   # ================================================================
-  build-and-test:
+  scratch-org-test:
     name: 🧪 Build & Test (Scratch Org)
     needs: static-analysis
+    if: github.base_ref == 'uat'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --- CLI Caching: Saves ~1-2 min per run ---
       - name: Cache Salesforce CLI
         id: cache-sf-cli
         uses: actions/cache@v4
@@ -79,33 +77,95 @@ jobs:
 
       - name: Authenticate Dev Hub
         run: |
-          echo "${{ secrets.SFDX_AUTH_URL }}" > sfdx_auth.url
-          sf org login sfdx-url --sfdx-url-file sfdx_auth.url --set-default-dev-hub --alias IntegrationOrg
-          rm -f sfdx_auth.url
+          echo "${{ secrets.DEVHUB_AUTH_URL }}" > auth.url
+          sf org login sfdx-url \
+            --sfdx-url-file auth.url \
+            --set-default-dev-hub \
+            --alias DevHub
+          rm -f auth.url
 
       - name: Create Scratch Org
-        run: sf org create scratch --definition-file config/project-scratch-def.json --alias scratch-org --set-default --duration-days 1
+        run: |
+          sf org create scratch \
+            --definition-file config/project-scratch-def.json \
+            --alias scratch-ci \
+            --set-default \
+            --duration-days 1
 
       - name: Push Source to Scratch Org
-        run: sf project deploy start --target-org scratch-org
+        run: sf project deploy start --target-org scratch-ci
 
       - name: Run Apex Tests
-        id: run-tests
         run: |
-          sf apex run test --target-org scratch-org --wait 10 --result-format human --code-coverage | tee test-output.txt
-          echo "test_result=success" >> $GITHUB_OUTPUT
+          sf apex run test \
+            --target-org scratch-ci \
+            --wait 15 \
+            --result-format human \
+            --code-coverage
 
       - name: Delete Scratch Org
         if: always()
-        run: sf org delete scratch --target-org scratch-org --no-prompt
+        run: sf org delete scratch --target-org scratch-ci --no-prompt
 
   # ================================================================
-  # JOB 3: Post PR Comment with CI Results
-  # Runs after all jobs to summarize results on the Pull Request
+  # JOB 3: Production Validation (PRs → main only)
+  # ================================================================
+  validate-production:
+    name: 🏭 Validate Against Production (Check-Only)
+    needs: static-analysis
+    if: github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache Salesforce CLI
+        id: cache-sf-cli
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/sf
+            ~/.cache/sf
+            /usr/local/lib/node_modules/@salesforce
+          key: sf-cli-${{ runner.os }}-v2
+          restore-keys: |
+            sf-cli-${{ runner.os }}-
+
+      - name: Install Salesforce CLI
+        if: steps.cache-sf-cli.outputs.cache-hit != 'true'
+        run: |
+          npm install --global @salesforce/cli
+          sf --version
+
+      - name: Verify Salesforce CLI
+        if: steps.cache-sf-cli.outputs.cache-hit == 'true'
+        run: sf --version
+
+      - name: Authenticate Production Org
+        run: |
+          echo "${{ secrets.PRODUCTION_AUTH_URL }}" > auth.url
+          sf org login sfdx-url \
+            --sfdx-url-file auth.url \
+            --alias ProductionOrg \
+            --set-default
+          rm -f auth.url
+
+      - name: Validate Deployment (Check-Only)
+        run: |
+          echo "🏭 Running check-only deployment against Production..."
+          sf project deploy start \
+            --source-dir force-app \
+            --target-org ProductionOrg \
+            --test-level RunLocalTests \
+            --dry-run \
+            --wait 30
+
+  # ================================================================
+  # JOB 4: PR Comment with CI Results
   # ================================================================
   pr-comment:
     name: 💬 PR Results Comment
-    needs: [static-analysis, build-and-test]
+    needs: [static-analysis, scratch-org-test, validate-production]
     runs-on: ubuntu-latest
     if: always()
     permissions:
@@ -115,8 +175,6 @@ jobs:
         id: status
         run: |
           ANALYSIS="${{ needs.static-analysis.result }}"
-          TESTS="${{ needs.build-and-test.result }}"
-
           if [ "$ANALYSIS" = "success" ]; then
             echo "analysis_icon=✅" >> $GITHUB_OUTPUT
             echo "analysis_text=Passed — No violations found" >> $GITHUB_OUTPUT
@@ -128,21 +186,33 @@ jobs:
             echo "analysis_text=Failed — Code quality issues detected" >> $GITHUB_OUTPUT
           fi
 
-          if [ "$TESTS" = "success" ]; then
-            echo "tests_icon=✅" >> $GITHUB_OUTPUT
-            echo "tests_text=All tests passed" >> $GITHUB_OUTPUT
-          elif [ "$TESTS" = "skipped" ]; then
-            echo "tests_icon=⏭️" >> $GITHUB_OUTPUT
-            echo "tests_text=Skipped (static analysis failed)" >> $GITHUB_OUTPUT
+          TARGET="${{ github.base_ref }}"
+
+          if [ "$TARGET" = "uat" ]; then
+            VALIDATION="${{ needs.scratch-org-test.result }}"
+            echo "validation_label=🧪 **Apex Tests (Scratch Org)**" >> $GITHUB_OUTPUT
+            echo "target_env=UAT" >> $GITHUB_OUTPUT
           else
-            echo "tests_icon=❌" >> $GITHUB_OUTPUT
-            echo "tests_text=Failed — See Actions log for details" >> $GITHUB_OUTPUT
+            VALIDATION="${{ needs.validate-production.result }}"
+            echo "validation_label=🏭 **Production Validation (Check-Only)**" >> $GITHUB_OUTPUT
+            echo "target_env=Production" >> $GITHUB_OUTPUT
           fi
 
-          if [ "$ANALYSIS" = "success" ] && [ "$TESTS" = "success" ]; then
-            echo "overall=✅ All checks passed" >> $GITHUB_OUTPUT
+          if [ "$VALIDATION" = "success" ]; then
+            echo "validation_icon=✅" >> $GITHUB_OUTPUT
+            echo "validation_text=Passed" >> $GITHUB_OUTPUT
+          elif [ "$VALIDATION" = "skipped" ]; then
+            echo "validation_icon=⏭️" >> $GITHUB_OUTPUT
+            echo "validation_text=Skipped (prerequisite failed)" >> $GITHUB_OUTPUT
           else
-            echo "overall=❌ Some checks failed" >> $GITHUB_OUTPUT
+            echo "validation_icon=❌" >> $GITHUB_OUTPUT
+            echo "validation_text=Failed — See Actions log for details" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "$ANALYSIS" = "success" ] && [ "$VALIDATION" = "success" ]; then
+            echo "overall=✅ All checks passed — Ready to merge into $TARGET" >> $GITHUB_OUTPUT
+          else
+            echo "overall=❌ Some checks failed — Please fix before merging" >> $GITHUB_OUTPUT
           fi
 
       - name: Post PR Comment
@@ -150,14 +220,140 @@ jobs:
         with:
           header: ci-results
           message: |
-            ## 🔄 CI Pipeline Results
+            ## 🔄 CI Pipeline Results — Target: `${{ github.base_ref }}`
 
             | Check | Status | Details |
             |-------|--------|---------|
             | 🔍 **Static Analysis (PMD)** | ${{ steps.status.outputs.analysis_icon }} | ${{ steps.status.outputs.analysis_text }} |
-            | 🧪 **Apex Tests (Scratch Org)** | ${{ steps.status.outputs.tests_icon }} | ${{ steps.status.outputs.tests_text }} |
+            | ${{ steps.status.outputs.validation_label }} | ${{ steps.status.outputs.validation_icon }} | ${{ steps.status.outputs.validation_text }} |
 
             ### ${{ steps.status.outputs.overall }}
 
             ---
+            *Target environment: **${{ steps.status.outputs.target_env }}***
             <sub>🤖 Automated by CI Pipeline — <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View full run</a></sub>
+
+  # ================================================================
+  # Slack Notification — CI Failure → @author
+  # ================================================================
+  slack-notify-ci:
+    name: 🔔 Slack — CI Failure
+    needs: [static-analysis, scratch-org-test, validate-production]
+    if: |
+      always() && (
+        needs.static-analysis.result == 'failure' ||
+        needs.scratch-org-test.result == 'failure' ||
+        needs.validate-production.result == 'failure'
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve Slack mention for PR author
+        id: author
+        run: |
+          MAP='${{ secrets.SLACK_GITHUB_USERS_MAP }}'
+          AUTHOR="${{ github.event.pull_request.user.login }}"
+          SLACK_ID=""
+          if [ -n "$MAP" ] && [ "$MAP" != "" ]; then
+            SLACK_ID=$(echo "$MAP" | jq -r --arg user "$AUTHOR" '.[$user] // empty' 2>/dev/null || true)
+          fi
+          if [ -n "$SLACK_ID" ]; then
+            echo "mention=<@$SLACK_ID>" >> $GITHUB_OUTPUT
+          else
+            echo "mention=\`$AUTHOR\`" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build failure details
+        id: details
+        run: |
+          ANALYSIS="${{ needs.static-analysis.result }}"
+          SCRATCH="${{ needs.scratch-org-test.result }}"
+          PROD_VAL="${{ needs.validate-production.result }}"
+          TARGET="${{ github.base_ref }}"
+          FAILURES=""
+
+          if [ "$ANALYSIS" = "failure" ]; then
+            FAILURES="${FAILURES}• 🔍 Static Analysis (PMD)\n"
+          fi
+          if [ "$TARGET" = "uat" ] && [ "$SCRATCH" = "failure" ]; then
+            FAILURES="${FAILURES}• 🧪 Scratch Org Tests\n"
+          fi
+          if [ "$TARGET" = "main" ] && [ "$PROD_VAL" = "failure" ]; then
+            FAILURES="${FAILURES}• 🏭 Production Validation\n"
+          fi
+
+          echo "failures=$FAILURES" >> $GITHUB_OUTPUT
+
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          channel-id: ${{ secrets.SLACK_CHANNEL_CI }}
+          payload: |
+            {
+              "text": "❌ CI échoué — PR #${{ github.event.pull_request.number }} par ${{ github.event.pull_request.user.login }}",
+              "attachments": [
+                {
+                  "color": "#dc3545",
+                  "blocks": [
+                    {
+                      "type": "header",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "❌ CI Pipeline Failed",
+                        "emoji": true
+                      }
+                    },
+                    {
+                      "type": "section",
+                      "fields": [
+                        {
+                          "type": "mrkdwn",
+                          "text": "*PR:*\n<${{ github.event.pull_request.html_url }}|#${{ github.event.pull_request.number }} — ${{ github.event.pull_request.title }}>"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Auteur:*\n${{ steps.author.outputs.mention }}"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Branche cible:*\n`${{ github.base_ref }}`"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Branche source:*\n`${{ github.head_ref }}`"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "section",
+                      "text": {
+                        "type": "mrkdwn",
+                        "text": "*Checks échoués:*\n${{ steps.details.outputs.failures }}"
+                      }
+                    },
+                    {
+                      "type": "actions",
+                      "elements": [
+                        {
+                          "type": "button",
+                          "text": {
+                            "type": "plain_text",
+                            "text": "📋 Voir les logs"
+                          },
+                          "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                        },
+                        {
+                          "type": "button",
+                          "text": {
+                            "type": "plain_text",
+                            "text": "🔀 Voir le PR"
+                          },
+                          "url": "${{ github.event.pull_request.html_url }}"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
