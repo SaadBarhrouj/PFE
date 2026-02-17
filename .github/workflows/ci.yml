@@ -13,7 +13,7 @@ jobs:
   # JOB 1: Static Code Analysis (PMD)
   # ================================================================
   static-analysis:
-    name: 🔍 Static Code Analysis (PMD)
+    name: Static Code Analysis (PMD)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -37,7 +37,7 @@ jobs:
       - name: Fail if violations found
         if: steps.pmd.outputs.violations != 0
         run: |
-          echo "❌ PMD found ${{ steps.pmd.outputs.violations }} violation(s)."
+          echo "PMD found ${{ steps.pmd.outputs.violations }} violation(s)."
           echo "Please fix the code quality issues before merging."
           exit 1
 
@@ -45,7 +45,7 @@ jobs:
   # JOB 2: Scratch Org Tests (PRs → uat only)
   # ================================================================
   scratch-org-test:
-    name: 🧪 Build & Test (Scratch Org)
+    name: Build & Test (Scratch Org)
     needs: static-analysis
     if: github.base_ref == 'uat'
     runs-on: ubuntu-latest
@@ -108,10 +108,10 @@ jobs:
         run: sf org delete scratch --target-org scratch-ci --no-prompt
 
   # ================================================================
-  # JOB 3: Production Validation (validate → génère Job ID)
+  # JOB 3: Production Validation (validate → generates Job ID)
   # ================================================================
   validate-production:
-    name: 🏭 Validate Against Production
+    name: Validate Against Production
     needs: static-analysis
     if: github.base_ref == 'main'
     runs-on: ubuntu-latest
@@ -155,7 +155,7 @@ jobs:
       - name: Validate Deployment (Generates Job ID)
         id: validate
         run: |
-          echo "🏭 Running FULL validation against Production..."
+          echo "Running full validation against Production..."
           
           set +e
           RESULT=$(sf project deploy validate \
@@ -172,7 +172,7 @@ jobs:
           if [ $EXIT_CODE -ne 0 ]; then
             echo ""
             echo "============================================"
-            echo "❌ VALIDATION FAILED"
+            echo "VALIDATION FAILED"
             echo "============================================"
             
             ERROR_MSG=$(echo "$RESULT" | jq -r '.message // .result.errorMessage // "Unknown error"' 2>/dev/null || echo "Could not parse error")
@@ -203,7 +203,7 @@ jobs:
           
           JOB_ID=$(echo "$RESULT" | jq -r '.result.id')
           echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
-          echo "✅ Validation OK — Job ID: $JOB_ID"
+          echo "Validation Successful - Job ID: $JOB_ID"
 
       - name: Post Job ID to PR
         if: success()
@@ -211,35 +211,35 @@ jobs:
         with:
           header: deploy-job-id
           message: |
-            ## 🏭 Production Validation Successful
+            ## Production Validation Successful
 
             | Info | Value |
             |------|-------|
             | **Job ID** | `${{ steps.validate.outputs.job_id }}` |
-            | **Status** | ✅ Validated — Ready for Quick Deploy |
+            | **Status** | Validated — Ready for Quick Deploy |
 
-            ### 📋 Deux options pour déployer :
+            ### Deployment Options:
             
-            **Option A — Salesforce Setup :**
-            1. Setup → Environments → Deploy → Deployment Status
-            2. Cliquer **Quick Deploy**
+            **Option A — Salesforce Setup:**
+            1. Navigate to Setup → Environments → Deploy → Deployment Status
+            2. Click **Quick Deploy**
             
-            **Option B — GitHub Actions :**
-            1. Onglet Actions → **CD - Deploy to Production**
-            2. Cliquer **Run workflow**
-            3. Coller le Job ID : `${{ steps.validate.outputs.job_id }}`
+            **Option B — GitHub Actions:**
+            1. Go to Actions tab → **CD - Deploy to Production**
+            2. Click **Run workflow**
+            3. Enter the Job ID: `${{ steps.validate.outputs.job_id }}`
 
-            > ⚠️ Le Job ID expire après **10 jours**.
+            > Note: The Job ID expires after **10 days**.
 
-      # ── 🔔 Slack — Validation Prod OK ──
-      - name: 🔔 Slack — Production Validated
+      # ── Slack — Validation Prod Success ──
+      - name: Slack — Production Validated
         if: success()
         uses: slackapi/slack-github-action@v1.27.0
         with:
           channel-id: ${{ secrets.SLACK_CHANNEL_DEPLOYMENTS }}
           payload: |
             {
-              "text": "✅ Validation Production réussie — PR #${{ github.event.pull_request.number }}",
+              "text": "Production validation successful — PR #${{ github.event.pull_request.number }}",
               "attachments": [
                 {
                   "color": "#28a745",
@@ -248,8 +248,8 @@ jobs:
                       "type": "header",
                       "text": {
                         "type": "plain_text",
-                        "text": "✅ Validation Production réussie",
-                        "emoji": true
+                        "text": "Production Validation Successful",
+                        "emoji": false
                       }
                     },
                     {
@@ -265,11 +265,11 @@ jobs:
                         },
                         {
                           "type": "mrkdwn",
-                          "text": "*Auteur:*\n`${{ github.actor }}`"
+                          "text": "*Author:*\n`${{ github.actor }}`"
                         },
                         {
                           "type": "mrkdwn",
-                          "text": "*Branche:*\n`${{ github.head_ref }}` → `main`"
+                          "text": "*Branch:*\n`${{ github.head_ref }}` → `main`"
                         }
                       ]
                     },
@@ -277,7 +277,7 @@ jobs:
                       "type": "section",
                       "text": {
                         "type": "mrkdwn",
-                        "text": "📋 *Prêt pour Quick Deploy* → Salesforce Setup ou GitHub Actions\n\n⚠️ Le Job ID expire après *10 jours*."
+                        "text": "The validation for production has completed successfully. It is now ready for quick deployment."
                       }
                     },
                     {
@@ -287,7 +287,7 @@ jobs:
                           "type": "button",
                           "text": {
                             "type": "plain_text",
-                            "text": "🔀 Voir le PR"
+                            "text": "View Pull Request"
                           },
                           "url": "${{ github.event.pull_request.html_url }}"
                         },
@@ -295,7 +295,7 @@ jobs:
                           "type": "button",
                           "text": {
                             "type": "plain_text",
-                            "text": "📋 Voir le run"
+                            "text": "View Workflow"
                           },
                           "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
                         }
@@ -308,15 +308,15 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
 
-      # ── 🔔 Slack — Validation Prod FAILED ──
-      - name: 🔔 Slack — Production Validation Failed
+      # ── Slack — Validation Prod FAILED ──
+      - name: Slack — Production Validation Failed
         if: failure()
         uses: slackapi/slack-github-action@v1.27.0
         with:
           channel-id: ${{ secrets.SLACK_CHANNEL_DEPLOYMENTS }}
           payload: |
             {
-              "text": "🚨 Validation Production ÉCHOUÉE — PR #${{ github.event.pull_request.number }}",
+              "text": "Production validation failed — PR #${{ github.event.pull_request.number }}",
               "attachments": [
                 {
                   "color": "#dc3545",
@@ -325,8 +325,8 @@ jobs:
                       "type": "header",
                       "text": {
                         "type": "plain_text",
-                        "text": "🚨 Validation Production ÉCHOUÉE",
-                        "emoji": true
+                        "text": "Production Validation Failed",
+                        "emoji": false
                       }
                     },
                     {
@@ -338,11 +338,11 @@ jobs:
                         },
                         {
                           "type": "mrkdwn",
-                          "text": "*Auteur:*\n`${{ github.actor }}`"
+                          "text": "*Author:*\n`${{ github.actor }}`"
                         },
                         {
                           "type": "mrkdwn",
-                          "text": "*Branche:*\n`${{ github.head_ref }}` → `main`"
+                          "text": "*Branch:*\n`${{ github.head_ref }}` → `main`"
                         }
                       ]
                     },
@@ -350,7 +350,7 @@ jobs:
                       "type": "section",
                       "text": {
                         "type": "mrkdwn",
-                        "text": "🔴 Le code ne passe pas la validation production. Intervention requise !"
+                        "text": "The validation for production has failed. Please review the errors in the pull request or workflow logs."
                       }
                     },
                     {
@@ -360,7 +360,7 @@ jobs:
                           "type": "button",
                           "text": {
                             "type": "plain_text",
-                            "text": "🔴 VOIR LES LOGS"
+                            "text": "View Logs"
                           },
                           "style": "danger",
                           "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -378,7 +378,7 @@ jobs:
   # JOB 4: PR Comment
   # ================================================================
   pr-comment:
-    name: 💬 PR Results Comment
+    name: Pull Request Results Comment
     needs: [static-analysis, scratch-org-test, validate-production]
     runs-on: ubuntu-latest
     if: always()
@@ -390,43 +390,43 @@ jobs:
         run: |
           ANALYSIS="${{ needs.static-analysis.result }}"
           if [ "$ANALYSIS" = "success" ]; then
-            echo "analysis_icon=✅" >> $GITHUB_OUTPUT
-            echo "analysis_text=Passed — No violations found" >> $GITHUB_OUTPUT
+            echo "analysis_icon=PASSED" >> $GITHUB_OUTPUT
+            echo "analysis_text=No violations found" >> $GITHUB_OUTPUT
           elif [ "$ANALYSIS" = "skipped" ]; then
-            echo "analysis_icon=⏭️" >> $GITHUB_OUTPUT
+            echo "analysis_icon=SKIPPED" >> $GITHUB_OUTPUT
             echo "analysis_text=Skipped" >> $GITHUB_OUTPUT
           else
-            echo "analysis_icon=❌" >> $GITHUB_OUTPUT
-            echo "analysis_text=Failed — Code quality issues detected" >> $GITHUB_OUTPUT
+            echo "analysis_icon=FAILED" >> $GITHUB_OUTPUT
+            echo "analysis_text=Code quality issues detected" >> $GITHUB_OUTPUT
           fi
 
           TARGET="${{ github.base_ref }}"
 
           if [ "$TARGET" = "uat" ]; then
             VALIDATION="${{ needs.scratch-org-test.result }}"
-            echo "validation_label=🧪 **Apex Tests (Scratch Org)**" >> $GITHUB_OUTPUT
+            echo "validation_label=Apex Tests (Scratch Org)" >> $GITHUB_OUTPUT
             echo "target_env=UAT" >> $GITHUB_OUTPUT
           else
             VALIDATION="${{ needs.validate-production.result }}"
-            echo "validation_label=🏭 **Production Validation**" >> $GITHUB_OUTPUT
+            echo "validation_label=Production Validation" >> $GITHUB_OUTPUT
             echo "target_env=Production" >> $GITHUB_OUTPUT
           fi
 
           if [ "$VALIDATION" = "success" ]; then
-            echo "validation_icon=✅" >> $GITHUB_OUTPUT
+            echo "validation_icon=PASSED" >> $GITHUB_OUTPUT
             echo "validation_text=Passed" >> $GITHUB_OUTPUT
           elif [ "$VALIDATION" = "skipped" ]; then
-            echo "validation_icon=⏭️" >> $GITHUB_OUTPUT
+            echo "validation_icon=SKIPPED" >> $GITHUB_OUTPUT
             echo "validation_text=Skipped (prerequisite failed)" >> $GITHUB_OUTPUT
           else
-            echo "validation_icon=❌" >> $GITHUB_OUTPUT
-            echo "validation_text=Failed — See Actions log for details" >> $GITHUB_OUTPUT
+            echo "validation_icon=FAILED" >> $GITHUB_OUTPUT
+            echo "validation_text=Failed — See Workflow log for details" >> $GITHUB_OUTPUT
           fi
 
           if [ "$ANALYSIS" = "success" ] && [ "$VALIDATION" = "success" ]; then
-            echo "overall=✅ All checks passed — Ready to merge into $TARGET" >> $GITHUB_OUTPUT
+            echo "overall=All checks passed — Ready to merge into $TARGET" >> $GITHUB_OUTPUT
           else
-            echo "overall=❌ Some checks failed — Please fix before merging" >> $GITHUB_OUTPUT
+            echo "overall=Some checks failed — Please resolve issues before merging" >> $GITHUB_OUTPUT
           fi
 
       - name: Post PR Comment
@@ -434,24 +434,24 @@ jobs:
         with:
           header: ci-results
           message: |
-            ## 🔄 CI Pipeline Results — Target: `${{ github.base_ref }}`
+            ## CI Pipeline Results — Target: `${{ github.base_ref }}`
 
             | Check | Status | Details |
             |-------|--------|---------|
-            | 🔍 **Static Analysis (PMD)** | ${{ steps.status.outputs.analysis_icon }} | ${{ steps.status.outputs.analysis_text }} |
-            | ${{ steps.status.outputs.validation_label }} | ${{ steps.status.outputs.validation_icon }} | ${{ steps.status.outputs.validation_text }} |
+            | **Static Analysis (PMD)** | ${{ steps.status.outputs.analysis_icon }} | ${{ steps.status.outputs.analysis_text }} |
+            | **${{ steps.status.outputs.validation_label }}** | ${{ steps.status.outputs.validation_icon }} | ${{ steps.status.outputs.validation_text }} |
 
             ### ${{ steps.status.outputs.overall }}
 
             ---
             *Target environment: **${{ steps.status.outputs.target_env }}***
-            <sub>🤖 Automated by CI Pipeline — <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View full run</a></sub>
+            <sub>Automated by CI Pipeline — <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Full Run</a></sub>
 
   # ================================================================
-  # 🔔 Slack — CI Failure → @auteur
+  # Slack — CI Failure
   # ================================================================
   slack-notify-ci:
-    name: 🔔 Slack — CI Failure
+    name: Slack — CI Failure
     needs: [static-analysis, scratch-org-test, validate-production]
     if: |
       always() && (
@@ -486,13 +486,13 @@ jobs:
           FAILURES=""
 
           if [ "$ANALYSIS" = "failure" ]; then
-            FAILURES="${FAILURES}• 🔍 Static Analysis (PMD)\n"
+            FAILURES="${FAILURES}• Static Analysis (PMD)\n"
           fi
           if [ "$TARGET" = "uat" ] && [ "$SCRATCH" = "failure" ]; then
-            FAILURES="${FAILURES}• 🧪 Scratch Org Tests\n"
+            FAILURES="${FAILURES}• Scratch Org Tests\n"
           fi
           if [ "$TARGET" = "main" ] && [ "$PROD_VAL" = "failure" ]; then
-            FAILURES="${FAILURES}• 🏭 Production Validation\n"
+            FAILURES="${FAILURES}• Production Validation\n"
           fi
 
           echo "failures=$FAILURES" >> $GITHUB_OUTPUT
@@ -503,7 +503,7 @@ jobs:
           channel-id: ${{ secrets.SLACK_CHANNEL_CI }}
           payload: |
             {
-              "text": "❌ CI échoué — PR #${{ github.event.pull_request.number }} par ${{ github.event.pull_request.user.login }}",
+              "text": "CI pipeline failed — PR #${{ github.event.pull_request.number }} by ${{ github.event.pull_request.user.login }}",
               "attachments": [
                 {
                   "color": "#dc3545",
@@ -512,8 +512,8 @@ jobs:
                       "type": "header",
                       "text": {
                         "type": "plain_text",
-                        "text": "❌ CI Pipeline Failed",
-                        "emoji": true
+                        "text": "CI Pipeline Failed",
+                        "emoji": false
                       }
                     },
                     {
@@ -525,15 +525,15 @@ jobs:
                         },
                         {
                           "type": "mrkdwn",
-                          "text": "*Auteur:*\n${{ steps.author.outputs.mention }}"
+                          "text": "*Author:*\n${{ steps.author.outputs.mention }}"
                         },
                         {
                           "type": "mrkdwn",
-                          "text": "*Branche cible:*\n`${{ github.base_ref }}`"
+                          "text": "*Target Branch:*\n`${{ github.base_ref }}`"
                         },
                         {
                           "type": "mrkdwn",
-                          "text": "*Branche source:*\n`${{ github.head_ref }}`"
+                          "text": "*Source Branch:*\n`${{ github.head_ref }}`"
                         }
                       ]
                     },
@@ -541,7 +541,7 @@ jobs:
                       "type": "section",
                       "text": {
                         "type": "mrkdwn",
-                        "text": "*Checks échoués:*\n${{ steps.details.outputs.failures }}"
+                        "text": "*Failed Checks:*\n${{ steps.details.outputs.failures }}"
                       }
                     },
                     {
@@ -551,7 +551,7 @@ jobs:
                           "type": "button",
                           "text": {
                             "type": "plain_text",
-                            "text": "📋 Voir les logs"
+                            "text": "View Logs"
                           },
                           "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
                         },
@@ -559,7 +559,7 @@ jobs:
                           "type": "button",
                           "text": {
                             "type": "plain_text",
-                            "text": "🔀 Voir le PR"
+                            "text": "View PR"
                           },
                           "url": "${{ github.event.pull_request.html_url }}"
                         }
