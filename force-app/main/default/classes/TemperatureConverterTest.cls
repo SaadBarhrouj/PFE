@@ -1,6 +1,7 @@
 /**
  * Test class for TemperatureConverter.
  * Tests the conversion methods with various inputs.
+ * Includes tests for normal conversions and null inputs.
  */
 @isTest
 public class TemperatureConverterTest {
