@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       job_id:
-        description: 'Job ID de la validation (trouvé dans le commentaire PR)'
+        description: 'Validation Job ID'
         required: true
         type: string
       skip_quick_deploy:
-        description: 'Full deploy au lieu de quick deploy ? (si Job ID expiré)'
+        description: 'Perform full deployment instead of quick deployment'
         required: false
         type: boolean
         default: false
@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   deploy-to-production:
-    name: 🚀 Deploy to Production Org
+    name: Deploy to Production Org
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -56,19 +56,19 @@ jobs:
             --set-default
           rm -f auth.url
 
-      - name: 🚀 Quick Deploy to Production
+      - name: Quick Deploy to Production
         if: ${{ !inputs.skip_quick_deploy }}
         run: |
-          echo "⚡ Quick deploying with Job ID: ${{ inputs.job_id }}"
+          echo "Quick deploying with Job ID: ${{ inputs.job_id }}"
           sf project deploy quick \
             --job-id ${{ inputs.job_id }} \
             --target-org ProductionOrg \
             --wait 10
 
-      - name: 🚀 Full Deploy to Production (Fallback)
+      - name: Full Deploy to Production (Fallback)
         if: ${{ inputs.skip_quick_deploy }}
         run: |
-          echo "🏭 Running full deployment (quick deploy skipped)..."
+          echo "Running full deployment (quick deploy skipped)..."
           sf project deploy start \
             --source-dir force-app \
             --target-org ProductionOrg \
@@ -79,7 +79,7 @@ jobs:
         if: success()
         run: |
           echo "============================================"
-          echo "✅ DEPLOYMENT TO PRODUCTION SUCCESSFUL"
+          echo "DEPLOYMENT TO PRODUCTION SUCCESSFUL"
           echo "============================================"
           echo "Job ID:      ${{ inputs.job_id }}"
           echo "Quick:       ${{ !inputs.skip_quick_deploy }}"
@@ -91,20 +91,20 @@ jobs:
         if: failure()
         run: |
           echo "============================================"
-          echo "❌ DEPLOYMENT TO PRODUCTION FAILED"
+          echo "DEPLOYMENT TO PRODUCTION FAILED"
           echo "============================================"
           echo "Check the logs above for details."
           echo "============================================"
 
-      # ── 🔔 Slack — Production Success → @channel ──
-      - name: 🔔 Slack — Production Deployed Successfully
+      # ── Slack — Production Success ──
+      - name: Slack — Production Deployed Successfully
         if: success()
         uses: slackapi/slack-github-action@v1.27.0
         with:
           channel-id: ${{ secrets.SLACK_CHANNEL_DEPLOYMENTS }}
           payload: |
             {
-              "text": "✅ Production déployée avec succès — <!channel>",
+              "text": "Production deployment successful",
               "attachments": [
                 {
                   "color": "#28a745",
@@ -113,8 +113,8 @@ jobs:
                       "type": "header",
                       "text": {
                         "type": "plain_text",
-                        "text": "🚀 Déploiement Production réussi",
-                        "emoji": true
+                        "text": "Production Deployment Successful",
+                        "emoji": false
                       }
                     },
                     {
@@ -122,11 +122,11 @@ jobs:
                       "fields": [
                         {
                           "type": "mrkdwn",
-                          "text": "*Environnement:*\n🏭 Production"
+                          "text": "*Environment:*\nProduction"
                         },
                         {
                           "type": "mrkdwn",
-                          "text": "*Déclenché par:*\n`${{ github.actor }}`"
+                          "text": "*Triggered by:*\n`${{ github.actor }}`"
                         },
                         {
                           "type": "mrkdwn",
@@ -134,7 +134,7 @@ jobs:
                         },
                         {
                           "type": "mrkdwn",
-                          "text": "*Mode:*\n${{ inputs.skip_quick_deploy && 'Full Deploy' || '⚡ Quick Deploy' }}"
+                          "text": "*Mode:*\n${{ inputs.skip_quick_deploy && 'Full Deploy' || 'Quick Deploy' }}"
                         }
                       ]
                     },
@@ -142,7 +142,7 @@ jobs:
                       "type": "section",
                       "text": {
                         "type": "mrkdwn",
-                        "text": "<!channel> ✅ Nouvelle version déployée en production !"
+                        "text": "A new version has been successfully deployed to production."
                       }
                     },
                     {
@@ -152,7 +152,7 @@ jobs:
                           "type": "button",
                           "text": {
                             "type": "plain_text",
-                            "text": "📋 Voir le run"
+                            "text": "View Deployment"
                           },
                           "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
                         }
@@ -165,10 +165,7 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
 
-      # ──────────────────────────────────────────────────────────
-      # 📧 AJOUTÉ : Email toute l'équipe — Nouvelle version prod
-      # ──────────────────────────────────────────────────────────
-      - name: 📧 Email — Nouvelle version en Production
+      - name: Email — Deployment to Production
         if: success()
         uses: dawidd6/action-send-mail@v3
         with:
@@ -178,18 +175,18 @@ jobs:
           password: ${{ secrets.SMTP_PASSWORD }}
           from: ${{ secrets.EMAIL_FROM }}
           to: ${{ secrets.EMAIL_TO_ALL }}
-          subject: "🚀 Nouvelle version déployée en Production"
+          subject: "Production Deployment Successful"
           html_body: |
             <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
               <div style="background:#28a745;color:#fff;padding:20px;border-radius:8px 8px 0 0">
-                <h2 style="margin:0">🚀 Nouvelle version en Production</h2>
+                <h2 style="margin:0">Production Deployment Successful</h2>
               </div>
               <div style="border:1px solid #e0e0e0;border-top:none;padding:20px;border-radius:0 0 8px 8px">
-                <p style="font-size:16px">Bonjour à tous,</p>
-                <p>Une nouvelle version a été déployée avec succès en <strong>Production</strong>.</p>
+                <p style="font-size:16px">Hello,</p>
+                <p>A new version has been successfully deployed to <strong>Production</strong>.</p>
                 <table style="width:100%;border-collapse:collapse;margin:15px 0">
                   <tr style="background:#f8f9fa">
-                    <td style="padding:10px;font-weight:bold;border:1px solid #dee2e6">Déployé par</td>
+                    <td style="padding:10px;font-weight:bold;border:1px solid #dee2e6">Deployed By</td>
                     <td style="padding:10px;border:1px solid #dee2e6">${{ github.actor }}</td>
                   </tr>
                   <tr>
@@ -202,26 +199,26 @@ jobs:
                   </tr>
                 </table>
                 <div style="background:#d4edda;padding:15px;border-radius:4px;margin:15px 0">
-                  <p style="margin:0;color:#155724">✅ Le déploiement s'est déroulé sans erreur.</p>
+                  <p style="margin:0;color:#155724">The deployment completed successfully.</p>
                 </div>
                 <p>
                   <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
                      style="background:#28a745;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px;display:inline-block">
-                    📋 Voir le déploiement
+                    View Deployment Details
                   </a>
                 </p>
               </div>
             </div>
 
-      # ── 🔔 Slack — Production Failure → ALERTE @here ──
-      - name: 🔔 Slack — ALERTE Production Failed
+      # ── Slack — Production Failure ──
+      - name: Slack — Production Deployment Failed
         if: failure()
         uses: slackapi/slack-github-action@v1.27.0
         with:
           channel-id: ${{ secrets.SLACK_CHANNEL_DEPLOYMENTS }}
           payload: |
             {
-              "text": "🚨 ALERTE — Échec du déploiement Production — <!here>",
+              "text": "Production deployment failed",
               "attachments": [
                 {
                   "color": "#dc3545",
@@ -230,8 +227,8 @@ jobs:
                       "type": "header",
                       "text": {
                         "type": "plain_text",
-                        "text": "🚨 ALERTE — Déploiement Production ÉCHOUÉ",
-                        "emoji": true
+                        "text": "Production Deployment Failed",
+                        "emoji": false
                       }
                     },
                     {
@@ -239,11 +236,11 @@ jobs:
                       "fields": [
                         {
                           "type": "mrkdwn",
-                          "text": "*Environnement:*\n🏭 Production"
+                          "text": "*Environment:*\nProduction"
                         },
                         {
                           "type": "mrkdwn",
-                          "text": "*Déclenché par:*\n`${{ github.actor }}`"
+                          "text": "*Triggered by:*\n`${{ github.actor }}`"
                         },
                         {
                           "type": "mrkdwn",
@@ -255,7 +252,7 @@ jobs:
                       "type": "section",
                       "text": {
                         "type": "mrkdwn",
-                        "text": "<!here> 🔴 *Le déploiement en production a échoué !*\nIntervention immédiate requise."
+                        "text": "The deployment to production has failed and requires immediate attention."
                       }
                     },
                     {
@@ -265,7 +262,7 @@ jobs:
                           "type": "button",
                           "text": {
                             "type": "plain_text",
-                            "text": "🔴 VOIR LES LOGS IMMÉDIATEMENT"
+                            "text": "View Logs"
                           },
                           "style": "danger",
                           "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -279,10 +276,7 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
 
-      # ──────────────────────────────────────────────────────────────
-      # Email URGENT — Échec déploiement Production
-      # ──────────────────────────────────────────────────────────────
-      - name: 📧 Email — ALERTE Échec Production
+      - name: Email — Production Deployment Failed
         if: failure()
         uses: dawidd6/action-send-mail@v3
         with:
@@ -292,18 +286,18 @@ jobs:
           password: ${{ secrets.SMTP_PASSWORD }}
           from: ${{ secrets.EMAIL_FROM }}
           to: ${{ secrets.EMAIL_TO_ALL }}
-          subject: "🚨 URGENT — Échec du déploiement Production"
+          subject: "ALERT - Production Deployment Failed"
           priority: high
           html_body: |
             <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
               <div style="background:#dc3545;color:#fff;padding:20px;border-radius:8px 8px 0 0">
-                <h2 style="margin:0">🚨 ALERTE — Déploiement Production ÉCHOUÉ</h2>
+                <h2 style="margin:0">Production Deployment Failed</h2>
               </div>
               <div style="border:2px solid #dc3545;border-top:none;padding:20px;border-radius:0 0 8px 8px">
-                <p style="font-size:16px;color:#dc3545;font-weight:bold">⚠️ Intervention immédiate requise</p>
+                <p style="font-size:16px;color:#dc3545;font-weight:bold">Immediate attention required</p>
                 <table style="width:100%;border-collapse:collapse;margin:15px 0">
                   <tr style="background:#f8f9fa">
-                    <td style="padding:10px;font-weight:bold;border:1px solid #dee2e6">Déclenché par</td>
+                    <td style="padding:10px;font-weight:bold;border:1px solid #dee2e6">Triggered By</td>
                     <td style="padding:10px;border:1px solid #dee2e6">${{ github.actor }}</td>
                   </tr>
                   <tr>
@@ -312,13 +306,13 @@ jobs:
                   </tr>
                 </table>
                 <div style="background:#f8d7da;padding:15px;border-radius:4px;border:1px solid #f5c6cb;margin:15px 0">
-                  <p style="margin:0;color:#721c24;font-weight:bold">🔴 Le déploiement en production a échoué.</p>
-                  <p style="margin:10px 0 0;color:#721c24">Veuillez consulter les logs immédiatement.</p>
+                  <p style="margin:0;color:#721c24;font-weight:bold">The production deployment process has failed.</p>
+                  <p style="margin:10px 0 0;color:#721c24">Please review the deployment logs immediately.</p>
                 </div>
                 <p>
                   <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
                      style="background:#dc3545;color:#fff;padding:12px 24px;text-decoration:none;border-radius:4px;display:inline-block;font-weight:bold;font-size:16px">
-                    🔴 VOIR LES LOGS
+                    View Logs
                   </a>
                 </p>
               </div>
